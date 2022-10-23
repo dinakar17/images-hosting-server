@@ -13,6 +13,7 @@ import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 // morgan is a logger middleware
 import morgan from "morgan";
+import sharp from "sharp";
 
 import { dirname } from "path";
 import { fileURLToPath } from "url";
@@ -35,12 +36,18 @@ dotenv.config();
 
 const app = express();
 
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
 app.use(cors());
 
-app.use(morgan("dev"));
-app.use("/uploads", express.static("uploads"));
+if (process.env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+}
+
+// app.use("/uploads", express.static("uploads"));
 // https://stackoverflow.com/questions/69243166/err-blocked-by-response-notsameorigin-cors-policy-javascript
-app.use(helmet());
+app.use(helmet({crossOriginResourcePolicy: false,}));
 
 const limiter = rateLimit({
   max: 100,
@@ -49,10 +56,6 @@ const limiter = rateLimit({
 });
 
 app.use("/imagev2api", limiter);
-
-
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(mongoSanitize());
 
@@ -77,6 +80,37 @@ var storage = multer.diskStorage({
   },
 });
 var upload = multer({ storage: storage });
+
+// Ref: https://sharp.pixelplumbing.com/api-resize
+app.get(
+  "/uploads/:filename",
+  catchAsync(async (req, res, next) => {
+    console.log("req.query", req.query);
+    // For url: uploads%2FDinakar_632461d1416122fc5212c05b_1664642928517.jpg&w=1920&q=75
+    // extract w and q from query string
+    // w - width, q - quality
+    const { w, q } = req.query;
+
+    const { filename } = req.params;
+    const filePath = `${__dirname}/uploads/${filename}`;
+    const file = fs.readFileSync(filePath);
+    const image = sharp(file);
+    if (w || q){
+      // fit: cover scales the image to cover the provided dimensions, cropping any parts of the image that do not fit.
+      image.resize({width: Number(w)});
+      image.jpeg({quality: Number(q)});
+    }
+    image
+      .toBuffer()
+      .then((data) => {
+        res.set("Content-Type", "image/jpeg");
+        res.send(data);
+      })
+      .catch((err) => {
+        return next(new AppError(`Error: ${err}`, 500));
+      });
+  })
+);
 
 app.get(
   "/",
