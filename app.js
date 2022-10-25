@@ -39,7 +39,13 @@ const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use(cors());
+const corsOptions = {
+  origin: process.env.CLIENT_URL,
+  credentials: true,
+  optionSuccessStatus: 200,
+}
+
+app.use(cors(corsOptions));
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
